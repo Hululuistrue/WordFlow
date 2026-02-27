@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+
+# Runtime
+tmp/
+tmp-tests/
+storage/
+app.db
+backend/.env
+backend/.env.bak
+backend/tmp/
+backend/pytest-cache-files-*/
+backend/app.db
+
+# Node
+node_modules/
+frontend/.next/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db

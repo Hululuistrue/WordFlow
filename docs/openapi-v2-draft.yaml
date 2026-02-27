@@ -1,0 +1,611 @@
+openapi: 3.1.0
+info:
+  title: Transcript Pro API
+  version: 2.0.0-draft
+  summary: Public SaaS hybrid route (YouTube OAuth + Upload ASR)
+servers:
+  - url: https://api.transcriptpro.example.com
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Integrations
+  - name: Uploads
+  - name: Jobs
+  - name: Transcripts
+  - name: Exports
+  - name: Usage
+  - name: Abuse
+paths:
+  /v2/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                display_name: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+
+  /v2/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+
+  /v2/workspaces:
+    post:
+      tags: [Auth]
+      summary: Create workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+    get:
+      tags: [Auth]
+      summary: List my workspaces
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Workspace" }
+
+  /v2/integrations/youtube/connect:
+    post:
+      tags: [Integrations]
+      summary: Start YouTube OAuth flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id]
+              properties:
+                workspace_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OAuth URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization_url: { type: string, format: uri }
+
+  /v2/integrations/youtube/callback:
+    get:
+      tags: [Integrations]
+      summary: OAuth callback endpoint
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+        - in: query
+          name: state
+          required: true
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirect to frontend success/failure page
+
+  /v2/uploads/init:
+    post:
+      tags: [Uploads]
+      summary: Initialize file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, filename, content_type, size_bytes]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                filename: { type: string }
+                content_type: { type: string }
+                size_bytes: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Upload target
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  object_key: { type: string }
+                  presigned_url: { type: string, format: uri }
+
+  /v2/uploads/{upload_id}/complete:
+    post:
+      tags: [Uploads]
+      summary: Complete file upload
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Upload completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_asset_id: { type: string, format: uuid }
+
+  /v2/uploads/{upload_id}/content:
+    post:
+      tags: [Uploads]
+      summary: Upload file content for initialized upload id
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  object_key: { type: string }
+                  stored_bytes: { type: integer }
+
+  /v2/jobs:
+    post:
+      tags: [Jobs]
+      summary: Create processing job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/JobStatus" }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Job" }
+                  next_cursor: { type: string, nullable: true }
+
+  /v2/jobs/{job_id}:
+    get:
+      tags: [Jobs]
+      summary: Get job
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /v2/jobs/{job_id}/retry:
+    post:
+      tags: [Jobs]
+      summary: Retry failed job
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /v2/jobs/{job_id}/cancel:
+    post:
+      tags: [Jobs]
+      summary: Cancel running/queued job
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /v2/transcripts/{transcript_id}:
+    get:
+      tags: [Transcripts]
+      summary: Get transcript with segments
+      parameters:
+        - in: path
+          name: transcript_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptDetail"
+    patch:
+      tags: [Transcripts]
+      summary: Save edited transcript draft
+      parameters:
+        - in: path
+          name: transcript_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edited_text]
+              properties:
+                edited_text: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptVersion"
+
+  /v2/transcripts/{transcript_id}/versions/{version_id}/publish:
+    post:
+      tags: [Transcripts]
+      summary: Publish transcript version
+      parameters:
+        - in: path
+          name: transcript_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: version_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptVersion"
+
+  /v2/exports:
+    post:
+      tags: [Exports]
+      summary: Create export file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, transcript_version_id, format]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                transcript_version_id: { type: string, format: uuid }
+                format: { $ref: "#/components/schemas/ExportFormat" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportAsset"
+
+  /v2/exports/{export_id}/download:
+    get:
+      tags: [Exports]
+      summary: Get signed download URL
+      parameters:
+        - in: path
+          name: export_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url: { type: string, format: uri }
+                  expires_at: { type: string, format: date-time }
+
+  /v2/usage/summary:
+    get:
+      tags: [Usage]
+      summary: Usage summary by workspace and period
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: period_start
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: period_end
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workspace_id: { type: string, format: uuid }
+                  used_minutes: { type: number }
+                  quota_minutes: { type: number }
+                  remaining_minutes: { type: number }
+
+  /v2/abuse-reports:
+    post:
+      tags: [Abuse]
+      summary: Submit abuse/rights report
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report_type, description]
+              properties:
+                workspace_id: { type: string, format: uuid, nullable: true }
+                job_id: { type: string, format: uuid, nullable: true }
+                reporter_email: { type: string, format: email, nullable: true }
+                report_type:
+                  type: string
+                  enum: [copyright, privacy, illegal, other]
+                description: { type: string, minLength: 10 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AbuseReport"
+    get:
+      tags: [Abuse]
+      summary: List abuse reports (admin)
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [open, reviewing, resolved, rejected]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AbuseReport" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthTokenResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer, example: 3600 }
+    Workspace:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        owner_user_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+    JobSourceType:
+      type: string
+      enum: [youtube_oauth, upload]
+    JobStatus:
+      type: string
+      enum: [queued, running, success, failed, retrying, canceled]
+    ExportFormat:
+      type: string
+      enum: [txt, srt, vtt]
+    JobCreateRequest:
+      type: object
+      required: [workspace_id, source_type]
+      properties:
+        workspace_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, nullable: true }
+        source_type: { $ref: "#/components/schemas/JobSourceType" }
+        source_asset_id: { type: string, format: uuid, nullable: true }
+        youtube_video_id: { type: string, nullable: true }
+        language_pref: { type: string, default: auto }
+        with_timestamps: { type: boolean, default: true }
+    Job:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, nullable: true }
+        source_type: { $ref: "#/components/schemas/JobSourceType" }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        error_code: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        transcript_id: { type: string, format: uuid, nullable: true }
+    TranscriptSegment:
+      type: object
+      properties:
+        index: { type: integer }
+        start_seconds: { type: number }
+        end_seconds: { type: number }
+        text: { type: string }
+    TranscriptVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        transcript_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        edit_status: { type: string, enum: [draft, published] }
+        edited_text: { type: string }
+        editor_user_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+    TranscriptDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        language: { type: string, nullable: true }
+        source_label: { type: string, nullable: true }
+        raw_text: { type: string }
+        segments:
+          type: array
+          items: { $ref: "#/components/schemas/TranscriptSegment" }
+        latest_version: { $ref: "#/components/schemas/TranscriptVersion" }
+    ExportAsset:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        transcript_version_id: { type: string, format: uuid }
+        format: { $ref: "#/components/schemas/ExportFormat" }
+        object_key: { type: string }
+        created_at: { type: string, format: date-time }
+    AbuseReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid, nullable: true }
+        job_id: { type: string, format: uuid, nullable: true }
+        reporter_email: { type: string, format: email, nullable: true }
+        report_type:
+          type: string
+          enum: [copyright, privacy, illegal, other]
+        description: { type: string }
+        status:
+          type: string
+          enum: [open, reviewing, resolved, rejected]
+        created_at: { type: string, format: date-time }
