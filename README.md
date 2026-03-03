@@ -11,6 +11,7 @@ Public-facing hybrid product skeleton:
 - `docs/openapi-v2-draft.yaml`: API contract draft
 - `docs/V2-PRD-public-hybrid.md`: V2 PRD
 - `docs/V2-Architecture-DB-API.md`: architecture and schema draft
+- `docs/DEPLOYMENT.md`: production deployment guide
 
 ## Run Backend
 ```bash
